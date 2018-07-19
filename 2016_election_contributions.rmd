@@ -17,6 +17,8 @@
 library(ggplot2)
 library(dplyr)
 library(scales)
+library(reshape2)
+library(gridExtra)
 ```
 
 
@@ -28,8 +30,7 @@ from authorized committees. To see the full list of variables and other info
 about this particular dataset, [click this link](https://cg-519a459a-0ea3-42c2-b7bc-fa1143481f74.s3-us-gov-west-1.amazonaws.com/bulk-downloads/Presidential_Map/2016/DATA_DICTIONARIES/CONTRIBUTOR_FORMAT.txt). 
 
 For this analysis, I will be using data for all states that made contributions
-to the 2016 Presidential Campaign to understand the big picture. I will then use 
-data for individual states to study the data more closely. 
+to the 2016 Presidential Campaign to understand the big picture. 
 
 # The Big Picture
 
@@ -37,7 +38,7 @@ To start, lets look at the contribution data from all states in America. The nam
 of the dataset will be `df_all`.
 
 
-```{r echo=FALSE, Load_the_Data}
+```{r echo=FALSE}
 # Load the Data
 df_all <- read.csv("2016_contributions_all.csv", row.names = NULL)
 
@@ -55,8 +56,6 @@ df_all <- df_all %>% rename(cmte_id = row.names, cand_id = cmte_id,
                             remove = election_tp)
 
 df_all$remove <- NULL
-
-head(df_all)
 ```
 
 
@@ -93,16 +92,17 @@ that made contributions is "Retired".
 
 
 
-Next we will look at the distribution of the columns.
+Next we will look at the distribution of the columns. We'll start by looking at 
+which candidate appears in the dataset the most.
 
-```{r echo=FALSE, Univariate_Plots, fig.width=13, fig.height=6}
+```{r echo=FALSE, fig.width=13, fig.height=6}
 ggplot(df_all, aes(x = cand_nm)) +
   geom_histogram(stat = "count", color = "black", fill = "lightblue") +
   coord_flip()
 ```
 
 With this plot we can easily see that Hillary Clinton and Bernard Sanders are 
-candidates that recieved the most contributions. With Donald Trump and Ted Cruz
+candidates that recieved the most number of contributions. With Donald Trump and Ted Cruz
 coming in third and fourth.
 
 
@@ -137,7 +137,7 @@ from most contributions made, to the least. In this dataset, there were abbrevia
 in the column that were not U.S. states. I removed the statistics of those 
 particular abbreviations and focused on just the states in America.
 
-```{r echo=FALSE, fig.width=13, fig.height=5}
+```{r fig.width=13, fig.height=5}
 # table of state distribution
 state_contrb_num <- as.data.frame(table(df_all$contbr_st))
 
@@ -163,6 +163,9 @@ ggplot(state_contrb_num_2, aes(reorder(state, -n), n, decreasing = TRUE)) +
   xlab("state") +
   ylab("count") 
 ```
+
+California gave the most contributions for the 2016 election, with New York, and
+Texas coming in behind.
 
 Next we'll see the contributor occupation graph.
 
@@ -225,7 +228,7 @@ must find new donors to grow their war chests.
 
 After looking at the distributions of this dataset, we now know that the most
 active city for contributions is New York, and the most active state is California.
-Hillary Clinton recieves the most contributions out of any candidate and Act Blue
+Hillary Clinton receives the most contributions out of any candidate and Act Blue
 is the most active contributor in this dataset. They may be the most active, but after
 we look at the data more closely, there should definitely be other contributors that
 have given the most money. Based on the distribution of the `contb_receipt_amt` column,
@@ -286,7 +289,7 @@ ggplot(cand_amount_received, aes(x = contb_receipt_amt, y = freq)) +
 
 
 This graph is slightly vague, but it does show us some important information. 
-We can clearly see that Hillary Clinton alone has clearly received donations
+We can clearly see that Hillary Clinton alone has received donations
 that amount in the millions. We also see that candidates such as Berney Sanders
 stand out from the rest because of the amount of smaller donations he received
 in his campaign. To look at the data more closley, I will plot the same graph,
@@ -340,6 +343,59 @@ Interestingly, each volume of contribution seems to stop at around $2700, this
 could be because, [according to the Federal Election Committee](https://www.fec.gov/help-candidates-and-committees/candidate-taking-receipts/contribution-limits-candidates/),
 indiviuals are limited to give 2700 per election and 5000 per year. Rules are
 differnet depending on whether you're part of a PAC or party committee.
+
+After analyzing the types of contributions the candidates receive, I became
+curious about the percentage of donations each candidate receives under $200.
+Small donations are a good indicator at how much support a candidate has from
+the population.
+
+```{r echo=FALSE, fig.width=13, fig.height=9}
+# make sum total for each candidate
+sum_total <- df_all %>%
+  select(cand_nm, contb_receipt_amt) %>%
+  group_by(cand_nm) %>%
+  summarise(total = sum(contb_receipt_amt))
+
+# make total for donations under 200 for each candidate
+sum_under_200 <- df_all %>%
+  select(cand_nm, contb_receipt_amt) %>%
+  filter(contb_receipt_amt <= 200 & contb_receipt_amt > 0) %>%
+  group_by(cand_nm) %>%
+  summarise(total = sum(contb_receipt_amt))
+
+sum_total$under_200_total <- sum_under_200$total
+
+sum_total.long <- melt(sum_total)
+
+p1 <- ggplot(sum_total.long, aes(reorder(cand_nm, value), value, fill = variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(legend.justification = c(1,0), 
+        legend.position = c(1,0),
+        legend.title = element_blank()) +
+  scale_fill_discrete(labels = c("Total Contributions", "Total Contributions Under $200")) +
+  scale_y_continuous(expand = c(0,0), breaks = seq(0,550000000,30000000)) +
+  coord_flip() +
+  xlab("Candidate") +
+  ylab("Total") +
+  ggtitle("Contribution Total & Contributions Under $200")
+
+p2 <- ggplot(sum_total, aes(reorder(cand_nm, under_200_total/total), (under_200_total/total) * 100), color = cand_nm) +
+  geom_bar(stat = "identity", color = "black", fill = "lightblue") +
+  coord_flip() +
+  scale_y_continuous(expand = c(0,0), breaks = seq(0,90,5)) +
+  xlab("Candidate") +
+  ylab("Percentage") +
+  ggtitle("Percentage of Contributions under $200")
+
+grid.arrange(p1,p2)
+```
+ 
+As we know, Clinton leads in total contributions and ones under $200. But as we
+see in the bottom table, Sanders leads all of the candidates for percentage of
+donations under $200 at over 70%, with Clinton sitting at 25%. We can also see
+candidates Cruz and Carson sitting at about half of their donations under $200.
+Studying this graph gives a good indication of what types of donations each
+candidate receives.
 
 Now that we understand the scope of amounts made, and we concluded that Hillary
 Clinton was the only candidate that received donations that amounted more than
@@ -714,6 +770,103 @@ candidate. Overall, donors who were retired gave the most money, and New York wa
 top city. Hillary Clinton led in all of these categories, but Cruz and Trump had significant
 donations from cities in Texas. 
 
+# Final Thoughts
+
+When I first started this project, I wanted to study a single state. I chose Kentucky since
+I would be moving there soon. Wouldn't it be great to understand the political spectrum of
+the state before you move there? I thought so. But then I thought, wouldn't it be even *better*
+to understand all of America? It wasn't hard to find the data for every single state.
+There was a simple button called [ALL.zip](https://classic.fec.gov/disclosurep/PDownload.do)
+on the Federal Election Commission page. Once downloaded, I realized how big of a dataset
+this was. 1.4 GB, 7,440,252 rows, and 18 variables, my biggest dataset to explore so far. The
+tast before me felt daunting. After spending a great amount of time with the dataset, I became
+much more comfortable with it. The following are my best observations and plots that I think
+are the most interesting.
+
+### Plot: Who's The Millionaire?
+
+```{r echo=FALSE, fig.width=13, fig.height=7}
+ggplot(subset(cand_amount_received, contb_receipt_amt > 0), aes(x = contb_receipt_amt, y = freq, color = cand_nm)) +
+  geom_point(alpha = .30) +
+  facet_wrap(~cand_nm, scales = "free") +
+  theme(legend.position = "none") +
+  ggtitle("Contribution Types Candidates Received in 2016 Presidential Election") +
+  xlab("Contribution Amount") +
+  ylab("Count")
+```
+
+Well, to answer the question in the headline, **all** of the candidates are millionairs.
+One candidate that repeatedly stood out was Hillary Clinton. As you can see in the `y` axis
+of all the candidates, Hillary's extends into the millions for the types of contributions.
+If I were to put the same `x` and `y` scale for all of the other candidates, their
+donations received would look like tiny dots.
+
+With this plot, we are able to compare the types of contributions each candidate
+received during the 2016 election. Understanding this could lead us to make
+conclusions to which type of candidate they are. For example, according to
+[an article by the Wall Street Journal](http://graphics.wsj.com/elections/2016/fec-donor-data/),
+the level of small-dollar donations is often read as a sign of grassroots
+enthusiasm. They have an advantage by continuing to tap into the same donors
+for more money, while campaigns whose donors have hit the legal donation limit
+have to find new donors to keep the money rolling in.
+
+From the plot, we see that Bernery Sanders shows great levels of grassroots enthusiasm
+with over 300 thousand small contributions. Other candidates such as Donald Trump, Ted Cruz,
+and Ben Carson, also had a decent amount of small contributions. This point was even
+further reiterated when I calculated the percentage of donations under $200 for each
+candidate.
+
+# Plot: The Grassroots Candidate
+
+```{r echo=FALSE, fig.width=13, fig.height=9}
+grid.arrange(p1,p2)
+```
+
+After plotting this graph, it was easy to compare the candidates that showed a more
+grassroots enthusiasm. Berney Sanders leads the pack with over 70% of his donations
+under $200, with Ted Cruz, Ben Carson, and Donald Trump behind. Clinton, the candidate
+with the most donations throughout the dataset, has about 25% of her donations under
+$200.
+
+# Plot: Occupations Supporting Candidates
+
+```{r echo=FALSE, fig.width=13, fig.height=9}
+df_all %>%
+  select(contbr_occupation, cand_nm, contb_receipt_amt) %>%
+  filter(contbr_occupation %in% c("RETIRED", "", "ATTORNEY", "INFORMATION REQUESTED",
+                                  "NOT EMPLOYED", "HOMEMAKER", "PHYSICIAN", "CONSULTANT",
+                                  "CEO", "LAWYER", "INFORMATION REQUESTED PER BEST EFFORTS",
+                                  "PRESIDENT", "EXECUTIVE", "PROFESSOR", "OWNER", "ENGINEER",
+                                  "TEACHER", "REAL ESTATE", "MANAGER", "BUSINESS OWNER",
+                                  "SALES", "INVESTOR", "WRITER", "STUDENT",
+                                  "SOFTWARE ENGINEER") & contb_receipt_amt > 0) %>%
+  group_by(contbr_occupation, cand_nm) %>%
+  summarise(contribution_amount = sum(contb_receipt_amt), contribution_amount = 
+              quantile(contribution_amount, probs = 0.95)) %>%
+  ggplot(aes(cand_nm, contribution_amount, color = cand_nm, fill = cand_nm)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x=element_blank(), axis.ticks.x = element_blank(),
+        legend.position = "bottom") +
+  facet_wrap(~contbr_occupation, scales = "free_y") +
+  xlab("") +
+  ylab("Contribution Total") +
+  ggtitle("Contributions Given Based on Occupation")
+```
+
+Understanding which occupations give the most to each candidate could also be a
+very useful statistic. With this plot, we can better understand the types of people
+that donate to each candidate. For example, one notabale occupation category is 
+"Requested Per Best Efforts", where candidates like Jeb
+Bush, Ben Carson, Marco Rubio, and Ted Cruz all have high amounts of donations. Another notable
+candidate is Donald Trump, who received most donations from occupations
+such as "Retired", "Real Estate", "Information Requested", "Owner", and "Sales".
+Sanders has a few notable occupation categories such as "Not Employed", "Engineer", 
+"Software Engineer", "Student","Teacher", and "Writer".
+
+These three plots in this section are great summaries of this dataset. They help us
+better understand what kind of money each candidate is receiving, and what kind of
+people are giving to them.
+
 # Reflection
 
 Exploring this data proved to be challening mainly because of the large amount of
@@ -730,8 +883,8 @@ I set out for myself.
 
 # Sources
 
-*[The Money Behind the Candidates](http://graphics.wsj.com/elections/2016/fec-donor-data/) - Wall Street Journal
-*[Hillary Victory Fund](https://en.wikipedia.org/wiki/Hillary_Victory_Fund) - Wikipedia
-*[Democratic Party fundraising effort helps Clinton find new donors, too](https://www.washingtonpost.com/politics/democratic-party-fundraising-effort-helps-clinton-find-new-donors-too/2016/02/19/b8535cea-d68f-11e5-b195-2e29a4e13425_story.html?utm_term=.408ee9aeb4c1) - The Washington Post
-*[ActBlue](https://secure.actblue.com/about)
-*[ActBlue Spending Summary](https://www.opensecrets.org/pacs/lookup2.php?strID=C00401224&cycle=2016) - OpenSecrets
+* [The Money Behind the Candidates](http://graphics.wsj.com/elections/2016/fec-donor-data/) - Wall Street Journal
+* [Hillary Victory Fund](https://en.wikipedia.org/wiki/Hillary_Victory_Fund) - Wikipedia
+* [Democratic Party fundraising effort helps Clinton find new donors, too](https://www.washingtonpost.com/politics/democratic-party-fundraising-effort-helps-clinton-find-new-donors-too/2016/02/19/b8535cea-d68f-11e5-b195-2e29a4e13425_story.html?utm_term=.408ee9aeb4c1) - The Washington Post
+* [ActBlue](https://secure.actblue.com/about)
+* [ActBlue Spending Summary](https://www.opensecrets.org/pacs/lookup2.php?strID=C00401224&cycle=2016) - OpenSecrets
